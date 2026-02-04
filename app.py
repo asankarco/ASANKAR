@@ -47,6 +47,22 @@ def get_google_sheets_client():
         # Load credentials from Streamlit secrets
         credentials_dict = dict(st.secrets["gcp_service_account"])
         
+        # Fix private key formatting - ensure proper line breaks
+        if "private_key" in credentials_dict:
+            private_key = credentials_dict["private_key"]
+            # Replace literal \n with actual newlines if needed
+            if "\\n" in private_key:
+                private_key = private_key.replace("\\n", "\n")
+            # Ensure it has proper BEGIN/END markers
+            if not private_key.startswith("-----BEGIN"):
+                private_key = "-----BEGIN PRIVATE KEY-----\n" + private_key
+            if not private_key.endswith("-----\n"):
+                if not private_key.endswith("-----"):
+                    private_key = private_key + "\n-----END PRIVATE KEY-----\n"
+                else:
+                    private_key = private_key + "\n"
+            credentials_dict["private_key"] = private_key
+        
         # Create credentials object
         credentials = service_account.Credentials.from_service_account_info(
             credentials_dict,
@@ -61,6 +77,7 @@ def get_google_sheets_client():
         return service
     except Exception as e:
         st.error(f"Error connecting to Google Sheets: {str(e)}")
+        st.error(f"Please check your secrets configuration in Streamlit Cloud settings.")
         return None
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
