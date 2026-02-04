@@ -44,36 +44,19 @@ st.markdown("""
 def get_google_sheets_client():
     """Initialize Google Sheets API client using service account credentials"""
     try:
-        # Load credentials from Streamlit secrets
-        credentials_dict = {}
-        
-        # Copy all fields from secrets
-        for key in st.secrets["gcp_service_account"]:
-            credentials_dict[key] = st.secrets["gcp_service_account"][key]
-        
-        # Fix private key formatting - this is critical for PEM parsing
-        if "private_key" in credentials_dict:
-            private_key = credentials_dict["private_key"]
+        # Method 1: Try to load as JSON string (RECOMMENDED - NO FORMATTING ISSUES!)
+        if "gcp_service_account_json" in st.secrets:
+            json_str = st.secrets["gcp_service_account_json"]
+            credentials_dict = json.loads(json_str)
             
-            # Step 1: Handle escaped newlines
-            # If the key has literal backslash-n, convert to actual newlines
-            if r'\n' in private_key or '\\n' in private_key:
-                private_key = private_key.replace(r'\n', '\n').replace('\\n', '\n')
+        # Method 2: Load from individual fields (OLD METHOD)
+        elif "gcp_service_account" in st.secrets:
+            credentials_dict = dict(st.secrets["gcp_service_account"])
             
-            # Step 2: Clean up any extra whitespace
-            private_key = private_key.strip()
-            
-            # Step 3: Ensure proper structure
-            # Remove any existing headers/footers first
-            private_key = private_key.replace('-----BEGIN PRIVATE KEY-----', '')
-            private_key = private_key.replace('-----END PRIVATE KEY-----', '')
-            private_key = private_key.strip()
-            
-            # Step 4: Rebuild with proper format
-            # The key should have newlines every 64 characters in the body
-            private_key = f"-----BEGIN PRIVATE KEY-----\n{private_key}\n-----END PRIVATE KEY-----\n"
-            
-            credentials_dict["private_key"] = private_key
+        else:
+            st.error("❌ No credentials found in secrets!")
+            st.info("Please add 'gcp_service_account_json' to your Streamlit secrets.")
+            return None
         
         # Create credentials object
         credentials = service_account.Credentials.from_service_account_info(
@@ -88,6 +71,11 @@ def get_google_sheets_client():
         service = build('sheets', 'v4', credentials=credentials)
         return service
         
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Error parsing JSON credentials: {str(e)}")
+        st.info("Make sure your JSON is valid and properly formatted.")
+        return None
+        
     except Exception as e:
         st.error(f"❌ Error connecting to Google Sheets")
         st.error(f"Error details: {str(e)}")
@@ -95,26 +83,17 @@ def get_google_sheets_client():
         # Provide helpful debugging info
         with st.expander("🔍 Troubleshooting Help"):
             st.markdown("""
-            **Common Issues:**
+            **The EASIEST way to fix this:**
             
-            1. **PEM File Error**: Your private_key format is incorrect
-               - Make sure you copied the ENTIRE private key including BEGIN/END markers
-               - Check for any extra quotes or spaces
+            Use the **JSON method**! Add this to your Streamlit secrets:
             
-            2. **Missing Secrets**: Check that all fields are in your secrets
-            
-            3. **API Not Enabled**: Ensure Google Sheets API is enabled in Google Cloud
-            
-            **Your Secrets Should Look Like:**
             ```toml
-            [gcp_service_account]
-            type = "service_account"
-            project_id = "asankar-486111"
-            private_key = "-----BEGIN PRIVATE KEY-----\\nMIIE...your key...\\n-----END PRIVATE KEY-----\\n"
-            client_email = "asankar@asankar-486111.iam.gserviceaccount.com"
+            gcp_service_account_json = '''
+            PASTE YOUR ENTIRE JSON FILE CONTENT HERE
+            '''
             ```
             
-            **Need the exact format?** Check SECRETS_GUIDE.md in the repository.
+            **Check SECRETS_GUIDE.md for the complete format!**
             """)
         return None
 
