@@ -45,22 +45,34 @@ def get_google_sheets_client():
     """Initialize Google Sheets API client using service account credentials"""
     try:
         # Load credentials from Streamlit secrets
-        credentials_dict = dict(st.secrets["gcp_service_account"])
+        credentials_dict = {}
         
-        # Fix private key formatting - ensure proper line breaks
+        # Copy all fields from secrets
+        for key in st.secrets["gcp_service_account"]:
+            credentials_dict[key] = st.secrets["gcp_service_account"][key]
+        
+        # Fix private key formatting - this is critical for PEM parsing
         if "private_key" in credentials_dict:
             private_key = credentials_dict["private_key"]
-            # Replace literal \n with actual newlines if needed
-            if "\\n" in private_key:
-                private_key = private_key.replace("\\n", "\n")
-            # Ensure it has proper BEGIN/END markers
-            if not private_key.startswith("-----BEGIN"):
-                private_key = "-----BEGIN PRIVATE KEY-----\n" + private_key
-            if not private_key.endswith("-----\n"):
-                if not private_key.endswith("-----"):
-                    private_key = private_key + "\n-----END PRIVATE KEY-----\n"
-                else:
-                    private_key = private_key + "\n"
+            
+            # Step 1: Handle escaped newlines
+            # If the key has literal backslash-n, convert to actual newlines
+            if r'\n' in private_key or '\\n' in private_key:
+                private_key = private_key.replace(r'\n', '\n').replace('\\n', '\n')
+            
+            # Step 2: Clean up any extra whitespace
+            private_key = private_key.strip()
+            
+            # Step 3: Ensure proper structure
+            # Remove any existing headers/footers first
+            private_key = private_key.replace('-----BEGIN PRIVATE KEY-----', '')
+            private_key = private_key.replace('-----END PRIVATE KEY-----', '')
+            private_key = private_key.strip()
+            
+            # Step 4: Rebuild with proper format
+            # The key should have newlines every 64 characters in the body
+            private_key = f"-----BEGIN PRIVATE KEY-----\n{private_key}\n-----END PRIVATE KEY-----\n"
+            
             credentials_dict["private_key"] = private_key
         
         # Create credentials object
@@ -75,9 +87,35 @@ def get_google_sheets_client():
         # Build the service
         service = build('sheets', 'v4', credentials=credentials)
         return service
+        
     except Exception as e:
-        st.error(f"Error connecting to Google Sheets: {str(e)}")
-        st.error(f"Please check your secrets configuration in Streamlit Cloud settings.")
+        st.error(f"❌ Error connecting to Google Sheets")
+        st.error(f"Error details: {str(e)}")
+        
+        # Provide helpful debugging info
+        with st.expander("🔍 Troubleshooting Help"):
+            st.markdown("""
+            **Common Issues:**
+            
+            1. **PEM File Error**: Your private_key format is incorrect
+               - Make sure you copied the ENTIRE private key including BEGIN/END markers
+               - Check for any extra quotes or spaces
+            
+            2. **Missing Secrets**: Check that all fields are in your secrets
+            
+            3. **API Not Enabled**: Ensure Google Sheets API is enabled in Google Cloud
+            
+            **Your Secrets Should Look Like:**
+            ```toml
+            [gcp_service_account]
+            type = "service_account"
+            project_id = "asankar-486111"
+            private_key = "-----BEGIN PRIVATE KEY-----\\nMIIE...your key...\\n-----END PRIVATE KEY-----\\n"
+            client_email = "asankar@asankar-486111.iam.gserviceaccount.com"
+            ```
+            
+            **Need the exact format?** Check SECRETS_GUIDE.md in the repository.
+            """)
         return None
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
